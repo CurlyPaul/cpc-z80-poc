@@ -1,13 +1,18 @@
-UseHardwareKeyMap equ 1 	; enable the Keyboard map
-BuildCPC equ 1			; required for some of the Chibi resources	
+;****************************************
+; Header
+;****************************************
+UseHardwareKeyMap equ 1 	; enable the Keyboard map	
 ScreenSize equ &4000
+read ".\libs\Multiplatform_ReadJoystick_Header.asm"
 
 org &8000
-
-read ".\libs\Multiplatform_ReadJoystick_Header.asm"
 ld a,1
-call &BC0E	;SCR SET MODE 1
+call &BC0E	;SCR SET MODE 1 - 320×200 pixels with 4 colors
 call KeyboardScanner_Init
+
+;****************************************
+; Main Program
+;****************************************
 
 MainLoop:
 	
@@ -15,6 +20,7 @@ MainLoop:
 	ld a,h
 	and l
 	ld h,a			;Read both controllers, and merge them together into H	
+				; TODO understand and remove the second controller, as I'm not using it
 
 	ld de,(CursorCurrentPosXY)		;Update Last cursor Data
 	call Cursor_ProcessDirections		;Process the Movement directions
@@ -25,6 +31,11 @@ MainLoop:
 	call DrawPlayer
 jp MainLoop
 
+DrawBackground:
+	; for now, just draw an empty background
+	call ClearScreen
+ret
+
 ClearScreen:
 	ld hl,&C000
 	ld de,&C000+1
@@ -33,16 +44,9 @@ ClearScreen:
 	ldir
 ret
 
-ret
-
-DrawBackground:
-	; for now, just draw an empty background
-	call ClearScreen
-ret
-
 DrawPlayer:
 
-	ld bc,(CursorCurrentPosXY)
+	ld bc,(CursorCurrentPosXY)	
 	call GetScreenPos
 
 	ld de,TestSprite
@@ -60,46 +64,13 @@ DrawPlayer:
 			dec c
 			jr nz,SpriteNextByte
 		pop hl
-	call &bc26			; screen next line? TODO attempt to get rid of this
+	call GetNextLine
 	djnz SpriteNextLine 		; djnz - decreases b and jumps when it's not zero
 ret
 
-CursorCurrentPosXY:	dw &0101	;Player xy pos
-CursorMinX: 	db 1			;Player Move limits
-CursorMaxX: 	db 68 			; screen width 80 bytes - player width (12)
-CursorMinY: 	db 1			
-CursorMaxY: 	db 152			; screen height 200 pixels - player height (48)
-
-CursorMoveSpeedXY: dw &0103		;Player Move speed
-
-read ".\libs\CA_Cursor_ProcessDirections.asm"
-
-align32	
-KeyMap equ KeyMap2+16			;wsad bnm p
-KeyMap2:				;Default controls
-	db &F7,&03,&7f,&05,&ef,&09,&df,&09,&f7,&09,&fB,&09,&fd,&09,&fe,&09 ;p2-pause,f3,f2,f1,r,l,d,u
-	db &f7,&03,&bf,&04,&bf,&05,&bf,&06,&df,&07,&df,&08,&ef,&07,&f7,&07 ;p1-pause,f3,f2,f1,r,l,d,u
-
-KeyboardScanner_KeyPresses: ds 16 	; define 16 bytes
-
-read ".\libs\Multiplatform_ScanKeys.asm"
-read ".\libs\CPC_V1_KeyboardDriver.asm"
-read ".\libs\Multiplatform_ReadJoystickKeypressHandler.asm"
-
-KeyboardScanner_Init:								;Init the screen buffer.
-	ld hl,KeyboardScanner_KeyPresses
-	ld d,h
-	ld e,l
-	inc de
-	ld bc,15
-	ld (hl),255
-	z_ldir
-	ret
-
-; Converts X,Y into screen memory locations
-; It expect x to to stored in b, y in c and the result is stored in hl 
 GetScreenPos:
 	; BC - X Y
+	; returns HL screen memory locations
 	push bc
 		ld b,0			; b is xpos, which we can ignore for now
 		ld hl,scr_addr_table	; load the address of the label into h1
@@ -113,6 +84,53 @@ GetScreenPos:
 	ld c,b				; load the value of b into c, we need b to be the low byte
 	ld b,&C0			; and &C0 is the high byte as &C000 is the start of the screen space
 	add hl,bc			; 
+ret
+
+GetNextLine:
+	ld a,h				; load the high byte of hl into a
+	add &08				; it's just a fact that each line is + &0800 from the last one
+	ld h,a				; put the value back in h
+	bit 7,h				; if the 7th bit is not zero, we rolled over &FFFF and ran out of memory
+	ret nz				
+	push bc
+		ld bc,&c050		; if we've wrapped add this magic number nudge back to the right place
+		add hl,bc
+	pop bc	
+ret
+
+;****************************************
+; Variables
+;****************************************
+
+CursorCurrentPosXY:	dw &0101	; Player xy pos
+CursorMinX: 	db 1			; Player Move limits
+CursorMaxX: 	db 68 			; Screen width 80 bytes - player width (12)
+CursorMinY: 	db 1			
+CursorMaxY: 	db 152			; Screen height 200 pixels - player height (48)
+
+CursorMoveSpeedXY: dw &0103		;Player Move speed
+
+align32	
+KeyMap equ KeyMap2+16			;wsad bnm p
+KeyMap2:				;Default controls
+	db &F7,&03,&7f,&05,&ef,&09,&df,&09,&f7,&09,&fB,&09,&fd,&09,&fe,&09 ;p2-pause,f3,f2,f1,r,l,d,u
+	db &f7,&03,&bf,&04,&bf,&05,&bf,&06,&df,&07,&df,&08,&ef,&07,&f7,&07 ;p1-pause,f3,f2,f1,r,l,d,u
+
+KeyboardScanner_KeyPresses: ds 16 	; define 16 bytes to for the keyboard scanner to use
+
+read ".\libs\Multiplatform_ScanKeys.asm"
+read ".\libs\CPC_V1_KeyboardDriver.asm"
+read ".\libs\Multiplatform_ReadJoystickKeypressHandler.asm"
+read ".\libs\CA_Cursor_ProcessDirections.asm"
+
+KeyboardScanner_Init:
+	ld hl,KeyboardScanner_KeyPresses
+	ld d,h
+	ld e,l
+	inc de
+	ld bc,15
+	ld (hl),255
+	z_ldir
 ret
 
 align 2
@@ -143,5 +161,8 @@ scr_addr_table:
     defb &30,&07, &30,&0F, &30,&17, &30,&1F, &30,&27, &30,&2F, &30,&37, &30,&3F;24
     defb &80,&07, &80,&0F, &80,&17, &80,&1F, &80,&27, &80,&2F, &80,&37, &80,&3F;25
 
+;****************************************
+; Resources
+;****************************************
 TestSprite:
 	incbin ".\res\SpriteCPC.raw"
