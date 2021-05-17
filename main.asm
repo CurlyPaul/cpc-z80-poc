@@ -1,35 +1,106 @@
 ;****************************************
 ; Header
 ;****************************************
-UseHardwareKeyMap equ 1 	; enable the Keyboard map	
 ScreenSize equ &4000
+Bank3 equ &C3
+Bank7 equ &C7
+UseHardwareKeyMap equ 1 	; enable the Keyboard map for the input reader	
 read ".\libs\Multiplatform_ReadJoystick_Header.asm"
 
 org &8000
 ld a,1
-call &BC0E	;SCR SET MODE 1 - 320×200 pixels with 4 colors
+call &BC0E			;SCR SET MODE 1 - 320*200 pixels with 4 colors
 call KeyboardScanner_Init
+;call InterruptHandler_Init
+
+;ld a,Bank3							
+;call BankSwitch_SetCurrent
+
+;call DrawPlayer
+;call SwitchScreenBuffer
+
+;ld de,&5050
+;ld (CursorCurrentPosXY),de
+
+call DrawPlayer
+;call SwitchScreenBuffer
+
+;ld a,Bank3							
+;call BankSwitch_SetCurrent
+
+;call DrawPlayer
+
+;ld a,Bank7							
+;call BankSwitch_SetCurrent
+
 
 ;****************************************
 ; Main Program
 ;****************************************
-
 MainLoop:
-	
+	halt
+jp MainLoop
+
+InterruptHandler:
+	exx
+	ex af,af'
+		ld b,&F5 	; The PPI which gives us info about the screen
+		in a,(c)	; read a from port (bc)
+		rra 		; right most bit indicates vsync, so push it into the carry
+		jp nc,NoVsync
+		call DrawPlayer
+		call SwitchScreenBuffer
+	NoVsync:
+		;call UpdatePlayerPosition
+	exx
+	ex af,af'
+	ei
+ret
+
+SwitchScreenBuffer:
+	ld a,(ScreenArea)
+	sub 16
+	jp nz, SetScreenBufferTwo
+SetScreenBufferOne:
+	ld de,48
+	ld (ScreenArea),de
+	ld de,&4000
+	ld (FrameBuffer),de
+	jp DoSwitchScreen
+SetScreenBufferTwo:
+	ld de,16
+	ld (ScreenArea),de
+	ld de,&C000
+	ld (FrameBuffer),de 
+DoSwitchScreen:
+	ld a,(ScreenArea)
+	ld bc,&BC0C ; CRTC Register to change the start address of the screen
+	out (c),c
+	inc b
+	out (c),a
+ret
+
+UpdatePlayerPosition:
+; TODO understand and remove the second controller, as I'm not using it
+; TODO Remove the di/ei calls from inside the control libraries, we are already hanging on an interupt
+; TODO I can occasionally wrap the screen if I'm fast enough
 	call Player_ReadControlsDual	;Read in the controllers
 	ld a,h
 	and l
 	ld h,a			;Read both controllers, and merge them together into H	
-				; TODO understand and remove the second controller, as I'm not using it
-
+				
 	ld de,(CursorCurrentPosXY)		;Update Last cursor Data
 	call Cursor_ProcessDirections		;Process the Movement directions
 	ld (CursorCurrentPosXY),de		;Save the new Cursor Position
-	; Todo add a wait frame so that we can reduce the flickering 
+ret
+
+DrawScreen:
+	;ld a,Bank7
+	;call BankSwitch_SetCurrent
 	; Todo draw stuff somewhere else and then bank switch it into screen memory
-	call DrawBackground
+	;call DrawBackground
 	call DrawPlayer
-jp MainLoop
+ret
 
 DrawBackground:
 	; for now, just draw an empty background
@@ -37,20 +108,18 @@ DrawBackground:
 ret
 
 ClearScreen:
-	ld hl,&C000
-	ld de,&C000+1
+	ld hl,FrameBuffer
+	ld de,FrameBuffer+1
 	ld bc,ScreenSize-1
 	ld (hl),0
 	ldir
 ret
 
 DrawPlayer:
-
 	ld bc,(CursorCurrentPosXY)	
 	call GetScreenPos
-
 	ld de,TestSprite
-	ld b,48		; * lines
+	ld b,48		 ; * lines
 
 	SpriteNextLine:
 		push hl
@@ -65,6 +134,7 @@ DrawPlayer:
 			jr nz,SpriteNextByte
 		pop hl
 	call GetNextLine
+	;call &BC26
 	djnz SpriteNextLine 		; djnz - decreases b and jumps when it's not zero
 ret
 
@@ -81,8 +151,9 @@ GetScreenPos:
 		ld h,(hl)		; load the in the address at h into h
 		ld l,a			; now put l into a
 	pop bc				; reset to BC to the original values
-	ld c,b				; load the value of b into c, we need b to be the low byte
-	ld b,&C0			; and &C0 is the high byte as &C000 is the start of the screen space
+	ld a,b				; need to store b, which will be returned as the low byte
+	ld bc,(FrameBuffer)		; and &40 is the high byte as &4000 is the start of the screen buffer
+	ld c,a
 	add hl,bc			; 
 ret
 
@@ -90,17 +161,47 @@ GetNextLine:
 	ld a,h				; load the high byte of hl into a
 	add &08				; it's just a fact that each line is + &0800 from the last one
 	ld h,a				; put the value back in h
-	bit 7,h				; if the 7th bit is not zero, we rolled over &FFFF and ran out of memory
+	; Need to change this so that if hl >= 8000 sub 4000
+
+	;push hl
+	;	ld de,(ScreenOverflowAddress)
+	;	sbc hl,de
+	;pop hl
+	;ret nc	; hl < ScreenOverflowAddress
+	bit 7,h				; if the 7th bit is not zero, we rolled over &FFFF and ran out of space
 	ret nz				
 	push bc
-		ld bc,&c050		; if we've wrapped add this magic number nudge back to the right place
+;		ld bc,		; if we've wrapped add this magic number nudge back to the right place
+		ld bc,&C050
 		add hl,bc
 	pop bc	
+ret
+
+InterruptHandler_Init:
+	di
+		ld a,&C3		; jp op code
+		ld (&0038),a		; &0038 is the rastor interrupt
+		ld hl,InterruptHandler
+		ld (&0039),hl		; write the address of the handler 
+	ei
+ret
+
+KeyboardScanner_Init:
+	ld hl,KeyboardScanner_KeyPresses
+	ld d,h
+	ld e,l
+	inc de
+	ld bc,15
+	ld (hl),255
+	z_ldir
 ret
 
 ;****************************************
 ; Variables
 ;****************************************
+ScreenArea: db 16  ; 16 = &4000 48 = &C000 
+FrameBuffer: dw &C000 ;
+ScreenOverflowAddress: dw &CFFF
 
 CursorCurrentPosXY:	dw &0101	; Player xy pos
 CursorMinX: 	db 1			; Player Move limits
@@ -122,16 +223,6 @@ read ".\libs\Multiplatform_ScanKeys.asm"
 read ".\libs\CPC_V1_KeyboardDriver.asm"
 read ".\libs\Multiplatform_ReadJoystickKeypressHandler.asm"
 read ".\libs\CA_Cursor_ProcessDirections.asm"
-
-KeyboardScanner_Init:
-	ld hl,KeyboardScanner_KeyPresses
-	ld d,h
-	ld e,l
-	inc de
-	ld bc,15
-	ld (hl),255
-	z_ldir
-ret
 
 align 2
 scr_addr_table:
