@@ -133,8 +133,7 @@ DrawPlayer:
 			dec c
 			jr nz,SpriteNextByte
 		pop hl
-	call GetNextLine
-	;call &BC26
+	call GetNextLine ; expected - c051, C0A1, C0F1.. last C9e1
 	djnz SpriteNextLine 		; djnz - decreases b and jumps when it's not zero
 ret
 
@@ -163,16 +162,18 @@ GetNextLine:
 	ld h,a				; put the value back in h
 	; Need to change this so that if hl >= 8000 sub 4000
 
-	;push hl
-	;	ld de,(ScreenOverflowAddress)
-	;	sbc hl,de
-	;pop hl
-	;ret nc	; hl < ScreenOverflowAddress
-	bit 7,h				; if the 7th bit is not zero, we rolled over &FFFF and ran out of space
-	ret nz				
-	push bc
-;		ld bc,		; if we've wrapped add this magic number nudge back to the right place
-		ld bc,&C050
+	push hl
+	push de
+		ld d,h
+		ld e,l
+		ld hl,(ScreenOverflowAddress)
+		and a	; clear the carry, does not change the value of a - TODO can I remove this? not using the carry
+		sbc hl,de ; (OverflowAddress - CurrentAddress)
+	pop de
+	pop hl
+	ret p	; if top is set we've wrapped and ran out memory			
+	push bc		
+		ld bc,&C050	; if we've wrapped add this magic number nudge back to the right place
 		add hl,bc
 	pop bc	
 ret
@@ -201,7 +202,7 @@ ret
 ;****************************************
 ScreenArea: db 16  ; 16 = &4000 48 = &C000 
 FrameBuffer: dw &C000 ;
-ScreenOverflowAddress: dw &CFFF
+ScreenOverflowAddress: dw &FFFF
 
 CursorCurrentPosXY:	dw &0101	; Player xy pos
 CursorMinX: 	db 1			; Player Move limits
