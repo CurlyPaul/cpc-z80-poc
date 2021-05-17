@@ -11,28 +11,7 @@ org &8000
 ld a,1
 call &BC0E			;SCR SET MODE 1 - 320*200 pixels with 4 colors
 call KeyboardScanner_Init
-;call InterruptHandler_Init
-
-;ld a,Bank3							
-;call BankSwitch_SetCurrent
-
-;call DrawPlayer
-;call SwitchScreenBuffer
-
-;ld de,&5050
-;ld (CursorCurrentPosXY),de
-
-call DrawPlayer
-;call SwitchScreenBuffer
-
-;ld a,Bank3							
-;call BankSwitch_SetCurrent
-
-;call DrawPlayer
-
-;ld a,Bank7							
-;call BankSwitch_SetCurrent
-
+call InterruptHandler_Init
 
 ;****************************************
 ; Main Program
@@ -44,37 +23,42 @@ jp MainLoop
 InterruptHandler:
 	exx
 	ex af,af'
-		ld b,&F5 	; The PPI which gives us info about the screen
+		ld b,&F5 	; The PPI is a device which gives us info about the screen
 		in a,(c)	; read a from port (bc)
 		rra 		; right most bit indicates vsync, so push it into the carry
 		jp nc,NoVsync
-		call DrawPlayer
-		call SwitchScreenBuffer
+		call DrawScreen
 	NoVsync:
-		;call UpdatePlayerPosition
+		; TODO limit this to once per frame
+		call UpdatePlayerPosition
 	exx
 	ex af,af'
 	ei
 ret
 
 SwitchScreenBuffer:
-	ld a,(ScreenArea)
+	; Flips all the screen buffer variables and moves the back buffer onto the screen
+	ld a,(ScreenStartAddressFlag)
 	sub 16
 	jp nz, SetScreenBufferTwo
 SetScreenBufferOne:
 	ld de,48
-	ld (ScreenArea),de
+	ld (ScreenStartAddressFlag),de
 	ld de,&4000
-	ld (FrameBuffer),de
+	ld (BackBufferAddress),de
+	ld de,&7FFF
+	ld (ScreenOverflowAddress),de
 	jp DoSwitchScreen
 SetScreenBufferTwo:
 	ld de,16
-	ld (ScreenArea),de
+	ld (ScreenStartAddressFlag),de
 	ld de,&C000
-	ld (FrameBuffer),de 
+	ld (BackBufferAddress),de 
+	ld de,&FFFF
+	ld (ScreenOverflowAddress),de
 DoSwitchScreen:
-	ld a,(ScreenArea)
-	ld bc,&BC0C ; CRTC Register to change the start address of the screen
+	ld a,(ScreenStartAddressFlag)
+	ld bc,&BC0C 	; CRTC Register to change the start address of the screen
 	out (c),c
 	inc b
 	out (c),a
@@ -84,22 +68,20 @@ UpdatePlayerPosition:
 ; TODO understand and remove the second controller, as I'm not using it
 ; TODO Remove the di/ei calls from inside the control libraries, we are already hanging on an interupt
 ; TODO I can occasionally wrap the screen if I'm fast enough
-	call Player_ReadControlsDual	;Read in the controllers
+	call Player_ReadControlsDual		; Read state of the controllers in hl
 	ld a,h
 	and l
-	ld h,a			;Read both controllers, and merge them together into H	
+	ld h,a					; Read both controllers, and merge them together into H	
 				
-	ld de,(CursorCurrentPosXY)		;Update Last cursor Data
-	call Cursor_ProcessDirections		;Process the Movement directions
-	ld (CursorCurrentPosXY),de		;Save the new Cursor Position
+	ld de,(CursorCurrentPosXY)		; Load the last player position
+	call Cursor_ProcessDirections		; Process the Movement directions
+	ld (CursorCurrentPosXY),de		; Save the new Cursor Position
 ret
 
 DrawScreen:
-	;ld a,Bank7
-	;call BankSwitch_SetCurrent
-	; Todo draw stuff somewhere else and then bank switch it into screen memory
-	;call DrawBackground
+	call DrawBackground
 	call DrawPlayer
+	call SwitchScreenBuffer
 ret
 
 DrawBackground:
@@ -108,8 +90,9 @@ DrawBackground:
 ret
 
 ClearScreen:
-	ld hl,FrameBuffer
-	ld de,FrameBuffer+1
+	ld hl,(BackBufferAddress)
+	ld de,(BackBufferAddress)
+	inc de
 	ld bc,ScreenSize-1
 	ld (hl),0
 	ldir
@@ -133,7 +116,7 @@ DrawPlayer:
 			dec c
 			jr nz,SpriteNextByte
 		pop hl
-	call GetNextLine ; expected - c051, C0A1, C0F1.. last C9e1
+	call GetNextLine 		; expected - c051, C0A1, C0F1.. last C9e1
 	djnz SpriteNextLine 		; djnz - decreases b and jumps when it's not zero
 ret
 
@@ -151,27 +134,27 @@ GetScreenPos:
 		ld l,a			; now put l into a
 	pop bc				; reset to BC to the original values
 	ld a,b				; need to store b, which will be returned as the low byte
-	ld bc,(FrameBuffer)		; and &40 is the high byte as &4000 is the start of the screen buffer
+	ld bc,(BackBufferAddress)		; and &40 is the high byte as &4000 is the start of the screen buffer
 	ld c,a
 	add hl,bc			; 
 ret
 
 GetNextLine:
+	; HL Current screen memory location
+	; returns HL updated to the start of the next line
 	ld a,h				; load the high byte of hl into a
 	add &08				; it's just a fact that each line is + &0800 from the last one
 	ld h,a				; put the value back in h
-	; Need to change this so that if hl >= 8000 sub 4000
 
 	push hl
 	push de
 		ld d,h
 		ld e,l
 		ld hl,(ScreenOverflowAddress)
-		and a	; clear the carry, does not change the value of a - TODO can I remove this? not using the carry
-		sbc hl,de ; (OverflowAddress - CurrentAddress)
+		sbc hl,de 	; (OverflowAddress - CurrentAddress)
 	pop de
 	pop hl
-	ret p	; if top is set we've wrapped and ran out memory			
+	ret p			; if top bit is set we've wrapped and ran out memory			
 	push bc		
 		ld bc,&C050	; if we've wrapped add this magic number nudge back to the right place
 		add hl,bc
@@ -179,15 +162,17 @@ GetNextLine:
 ret
 
 InterruptHandler_Init:
+	; Sets the rastor interrupt to our interrupt handler
 	di
 		ld a,&C3		; jp op code
-		ld (&0038),a		; &0038 is the rastor interrupt
+		ld (&0038),a		; &0038 is executed when the rastor interrupt fires
 		ld hl,InterruptHandler
-		ld (&0039),hl		; write the address of the handler 
+		ld (&0039),hl		; write jp InterruptHandler into the target address
 	ei
 ret
 
 KeyboardScanner_Init:
+	; Unsurprisingly initiases the keyboard scanner, which needs to know which area of memory it can store data in
 	ld hl,KeyboardScanner_KeyPresses
 	ld d,h
 	ld e,l
@@ -200,9 +185,9 @@ ret
 ;****************************************
 ; Variables
 ;****************************************
-ScreenArea: db 16  ; 16 = &4000 48 = &C000 
-FrameBuffer: dw &C000 ;
-ScreenOverflowAddress: dw &FFFF
+ScreenStartAddressFlag: db 48  		; 16 = &4000 48 = &C000 
+ScreenOverflowAddress: dw &7FFF
+BackBufferAddress: dw &4000 
 
 CursorCurrentPosXY:	dw &0101	; Player xy pos
 CursorMinX: 	db 1			; Player Move limits
@@ -210,11 +195,11 @@ CursorMaxX: 	db 68 			; Screen width 80 bytes - player width (12)
 CursorMinY: 	db 1			
 CursorMaxY: 	db 152			; Screen height 200 pixels - player height (48)
 
-CursorMoveSpeedXY: dw &0103		;Player Move speed
+CursorMoveSpeedXY: dw &0103		; Player Move speed
 
 align32	
-KeyMap equ KeyMap2+16			;wsad bnm p
-KeyMap2:				;Default controls
+KeyMap equ KeyMap2+16			; wsad bnm p
+KeyMap2:				; Default controls
 	db &F7,&03,&7f,&05,&ef,&09,&df,&09,&f7,&09,&fB,&09,&fd,&09,&fe,&09 ;p2-pause,f3,f2,f1,r,l,d,u
 	db &f7,&03,&bf,&04,&bf,&05,&bf,&06,&df,&07,&df,&08,&ef,&07,&f7,&07 ;p1-pause,f3,f2,f1,r,l,d,u
 
