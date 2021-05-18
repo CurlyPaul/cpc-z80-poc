@@ -102,11 +102,11 @@ DrawPlayer:
 	ld bc,(CursorCurrentPosXY)	
 	call GetScreenPos
 	ld de,TestSprite
-	ld b,48		 ; * lines
+	ld b,56		 ; * lines
 
 	SpriteNextLine:
 		push hl
-			ld c,12		; bytes per line
+			ld c,12		; 12 bytes per line, always? Can get some cool effects from playing with this
 	SpriteNextByte:
 			ld a,(de)	; Sourcebyte	
 			ld (hl),a	; Screen desintation
@@ -242,4 +242,4 @@ scr_addr_table:
 ; Resources
 ;****************************************
 TestSprite:
-	incbin ".\res\SpriteCPC.raw"
+	incbin ".\res\pickle.raw"
