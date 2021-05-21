@@ -2,17 +2,14 @@
 ; Header
 ;****************************************
 ScreenSize equ &4000
-Bank3 equ &C3
-Bank7 equ &C7
 UseHardwareKeyMap equ 1 	; enable the Keyboard map for the input reader	
 read ".\libs\Multiplatform_ReadJoystick_Header.asm"
 
 org &8000
-ld a,1
-call &BC0E			;SCR SET MODE 1 - 320*200 pixels with 4 colors
+
+call Screen_Init
 call KeyboardScanner_Init
 call InterruptHandler_Init
-
 ;****************************************
 ; Main Program
 ;****************************************
@@ -57,17 +54,17 @@ SetScreenBufferTwo:
 	ld de,&FFFF
 	ld (ScreenOverflowAddress),de
 DoSwitchScreen:
-	ld a,(ScreenStartAddressFlag)
 	ld bc,&BC0C 	; CRTC Register to change the start address of the screen
 	out (c),c
 	inc b
+	ld a,(ScreenStartAddressFlag)
 	out (c),a
 ret
 
 UpdatePlayerPosition:
 ; TODO understand and remove the second controller, as I'm not using it
 ; TODO Remove the di/ei calls from inside the control libraries, we are already hanging on an interupt
-; TODO I can occasionally wrap the screen if I'm fast enough
+; TODO I can occasionally wrap the screen via the bottom
 	call Player_ReadControlsDual		; Read state of the controllers in hl
 	ld a,h
 	and l
@@ -106,7 +103,7 @@ DrawPlayer:
 
 	SpriteNextLine:
 		push hl
-			ld c,12		; 12 bytes per line, always? Can get some cool effects from playing with this
+			ld c,12		; 12 bytes per line, 4 pixels each byte in 16 colour mode? Can get some cool effects from playing with this
 	SpriteNextByte:
 			ld a,(de)	; Sourcebyte	
 			ld (hl),a	; Screen desintation
@@ -121,27 +118,35 @@ DrawPlayer:
 ret
 
 GetScreenPos:
-	; BC - X Y
-	; returns HL screen memory locations
-	push bc
-		ld b,0			; b is xpos, which we can ignore for now
+	;; Inputs: BC - X Y
+	;; Returns HL : screen memory locations
+
+	;; Calculate the ypos first
+	push bc				; push bc because we need to preserve the value of b (xpos)
+		ld b,0			; which we must zero out because bc needs to be the y coordinate
 		ld hl,scr_addr_table	; load the address of the label into h1
-		add hl,bc		; add the value of c (ypos) to hl twice
-		add hl,bc		; as each value in the look up is 2 bytes
-		ld a,(hl)		; load the value at address in hl into a
-		inc l			; increment the address we are looking at
-		ld h,(hl)		; load the in the address at h into h
-		ld l,a			; now put l into a
-	pop bc				; reset to BC to the original values
-	ld a,b				; need to store b, which will be returned as the low byte
-	ld bc,(BackBufferAddress)		; and &40 is the high byte as &4000 is the start of the screen buffer
-	ld c,a
-	add hl,bc			; 
+		add hl,bc		; as each element in the look up table is 2 bytes(&XXXX) long, so add the value of c (ypos) to hl twice
+		add hl,bc		; ...to convert h into an offset from the start of the lookup table
+		
+		;; Now read two bytes from the address held in hl. We have to do this one at a time
+
+		ld a,(hl)		; stash one byte from the address in hl into a
+		inc l			; increment the address we are pointing at
+		ld h,(hl)		; load the next byte into the address at h into h
+		ld l,a			; now put the first byte we read back into l
+
+	;; Now calculate the xpos, this is much easier as these are linear in screen
+	pop bc				; reset to BC to the original XY values
+					
+	ld a,b				; need to stash b as the next op insists on reading 16bit - we can't to ld c,(label)
+	ld bc,(BackBufferAddress)	; bc now contains loads either &4000 or &C000, depending which cycle we are in
+	ld c,a				; bc will now contain &40{x}
+	add hl,bc			; hl = hl + bc, add the x and y values together
 ret
 
 GetNextLine:
-	; HL Current screen memory location
-	; returns HL updated to the start of the next line
+	;; Inputs: HL Current screen memory location
+	;; Returns: HL updated to the start of the next line
 	ld a,h				; load the high byte of hl into a
 	add &08				; it's just a fact that each line is + &0800 from the last one
 	ld h,a				; put the value back in h
@@ -189,7 +194,7 @@ ScreenStartAddressFlag: db 48  		; 16 = &4000 48 = &C000
 ScreenOverflowAddress: dw &7FFF
 BackBufferAddress: dw &4000 
 
-CursorCurrentPosXY:	dw &0101	; Player xy pos
+CursorCurrentPosXY:	dw &0010	; Player xy pos
 CursorMinX: 	db 1			; Player Move limits
 CursorMaxX: 	db 68 			; Screen width 80 bytes - player width (12)
 CursorMinY: 	db 1			
@@ -209,34 +214,8 @@ read ".\libs\Multiplatform_ScanKeys.asm"
 read ".\libs\CPC_V1_KeyboardDriver.asm"
 read ".\libs\Multiplatform_ReadJoystickKeypressHandler.asm"
 read ".\libs\CA_Cursor_ProcessDirections.asm"
+read ".\libs\CPC_V1_SimpleScreenSetUp.asm"
 
-align 2
-scr_addr_table:
-    defb &00,&00, &00,&08, &00,&10, &00,&18, &00,&20, &00,&28, &00,&30, &00,&38;1
-    defb &50,&00, &50,&08, &50,&10, &50,&18, &50,&20, &50,&28, &50,&30, &50,&38;2
-    defb &A0,&00, &A0,&08, &A0,&10, &A0,&18, &A0,&20, &A0,&28, &A0,&30, &A0,&38;3
-    defb &F0,&00, &F0,&08, &F0,&10, &F0,&18, &F0,&20, &F0,&28, &F0,&30, &F0,&38;4
-    defb &40,&01, &40,&09, &40,&11, &40,&19, &40,&21, &40,&29, &40,&31, &40,&39;5
-    defb &90,&01, &90,&09, &90,&11, &90,&19, &90,&21, &90,&29, &90,&31, &90,&39;6
-    defb &E0,&01, &E0,&09, &E0,&11, &E0,&19, &E0,&21, &E0,&29, &E0,&31, &E0,&39;7
-    defb &30,&02, &30,&0A, &30,&12, &30,&1A, &30,&22, &30,&2A, &30,&32, &30,&3A;8
-    defb &80,&02, &80,&0A, &80,&12, &80,&1A, &80,&22, &80,&2A, &80,&32, &80,&3A;9
-    defb &D0,&02, &D0,&0A, &D0,&12, &D0,&1A, &D0,&22, &D0,&2A, &D0,&32, &D0,&3A;10
-    defb &20,&03, &20,&0B, &20,&13, &20,&1B, &20,&23, &20,&2B, &20,&33, &20,&3B;11
-    defb &70,&03, &70,&0B, &70,&13, &70,&1B, &70,&23, &70,&2B, &70,&33, &70,&3B;12
-    defb &C0,&03, &C0,&0B, &C0,&13, &C0,&1B, &C0,&23, &C0,&2B, &C0,&33, &C0,&3B;13
-    defb &10,&04, &10,&0C, &10,&14, &10,&1C, &10,&24, &10,&2C, &10,&34, &10,&3C;14
-    defb &60,&04, &60,&0C, &60,&14, &60,&1C, &60,&24, &60,&2C, &60,&34, &60,&3C;15
-    defb &B0,&04, &B0,&0C, &B0,&14, &B0,&1C, &B0,&24, &B0,&2C, &B0,&34, &B0,&3C;16
-    defb &00,&05, &00,&0D, &00,&15, &00,&1D, &00,&25, &00,&2D, &00,&35, &00,&3D;17
-    defb &50,&05, &50,&0D, &50,&15, &50,&1D, &50,&25, &50,&2D, &50,&35, &50,&3D;18
-    defb &A0,&05, &A0,&0D, &A0,&15, &A0,&1D, &A0,&25, &A0,&2D, &A0,&35, &A0,&3D;19
-    defb &F0,&05, &F0,&0D, &F0,&15, &F0,&1D, &F0,&25, &F0,&2D, &F0,&35, &F0,&3D;20
-    defb &40,&06, &40,&0E, &40,&16, &40,&1E, &40,&26, &40,&2E, &40,&36, &40,&3E;21
-    defb &90,&06, &90,&0E, &90,&16, &90,&1E, &90,&26, &90,&2E, &90,&36, &90,&3E;22
-    defb &E0,&06, &E0,&0E, &E0,&16, &E0,&1E, &E0,&26, &E0,&2E, &E0,&36, &E0,&3E;23
-    defb &30,&07, &30,&0F, &30,&17, &30,&1F, &30,&27, &30,&2F, &30,&37, &30,&3F;24
-    defb &80,&07, &80,&0F, &80,&17, &80,&1F, &80,&27, &80,&2F, &80,&37, &80,&3F;25
 
 ;****************************************
 ; Resources
