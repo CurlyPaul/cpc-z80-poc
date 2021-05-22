@@ -1,13 +1,8 @@
-read ".\CPC_V1_SimplePalette.asm"
 
 Screen_Init:
-	; Sets the screen to 16 colour/256 wide mode
+	; Sets the screen to 16 colour/160 wide mode
 	ld a,0
 	call &BC0E	; scr_set_mode 0 - 16 colors
-
-	;ld hl,ColourPalette
-	;call setup_colours
-
 ret
 
 ; This is the screen address table for a standard screen

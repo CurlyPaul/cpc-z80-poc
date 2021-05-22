@@ -1,45 +1,40 @@
 ;***************************************
-; Taken from an example at www.cpcwiki.eu/index.php/Programming An_example_loader
+; Origially based an example at www.cpcwiki.eu/index.php/Programming An_example_loader
 ;***************************************
-scr_set_border		equ &bc38
-scr_set_ink		equ &BC32
 
-; TODO This definetly doesn't work when using customer interrupts
-; Need to figure out which bits to set and out (c),c &7F https-//www.cpcwiki.eu/index.php/Gate_Array#Controlling_the_Gate_Array
+ColourPalette: ; hardware colours
+defb &54,&42,&56,&4A,&4C,&43,&43,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&54
 
-ColourPalette:
-defb 0,&12,&09,&0C,&02,&1A,&12,&12,&12,&12,&12,&12,&12,&12,&12,&12,0
+Palette_Init:
+	;; CPC has some quriks here as well, seems to be around the ability to flash each colour
+	;;
+	;; http://www.cpcwiki.eu/forum/programming/screen-scrolling-and-ink-commands/
+	;; https://www.cpcwiki.eu/forum/programming/bios-call-scr_set_ink-and-interrupts/
+	;; di for safety
+	di
+	ld hl,ColourPalette
+	call SetupColours
+	;; but for this to work, make sure these values are left in the shadow registers
+	;; so we've only got one switch in here
+	exx
+	ei
+ret
 
+SetupColours:
+	;; Inputs: HL Address the palette values are stored
+	ld b,17			;; 16 colours + 1 border
+	xor a			;; start with pen 0
 
+DoColours:
+	push bc			;; need to stash b as we are using it for our loop and need it
+				;; below to write to the port 		
+		ld e,(hl)	;; read the value of the colour we want into e
+		inc hl          ;; move along ready for next time
 
-setup_colours:
-di
-exx
-ld b,16			  ;; 16 colours
-xor a			  ;; start with pen 0
-
-do_colours:
-push bc
-push af
-	ld c,(hl)		  ;; colour value
-	inc hl
-	ld b,c			  ;; B=C so colours will not flash
-	push hl
-	;; A = pen number
-	;; B,C = colour
-	call &BC32		  ;; set colour for pen
-	pop hl
-pop af
-pop bc
-;; increment pen number
-inc a
-djnz do_colours
-
-;; set border colour
-
-ld c,(hl)
-ld b,c
-call scr_set_border	
-exx
-ei
+		ld bc,&7F00
+     		out (c),a	;; PENR:&7F{pp} - where pp is the palette/pen number 
+		out (c),e	;; INKR:&7F{hc} - where hc is the hardware colour number
+	pop bc
+	inc a			;; increment pen number
+	djnz DoColours
 ret

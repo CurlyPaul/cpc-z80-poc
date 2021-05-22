@@ -8,8 +8,10 @@ read ".\libs\Multiplatform_ReadJoystick_Header.asm"
 org &8000
 
 call Screen_Init
+call Palette_Init
 call KeyboardScanner_Init
 call InterruptHandler_Init
+
 ;****************************************
 ; Main Program
 ;****************************************
@@ -215,10 +217,10 @@ read ".\libs\CPC_V1_KeyboardDriver.asm"
 read ".\libs\Multiplatform_ReadJoystickKeypressHandler.asm"
 read ".\libs\CA_Cursor_ProcessDirections.asm"
 read ".\libs\CPC_V1_SimpleScreenSetUp.asm"
-
+read ".\libs\CPC_V1_SimplePalette.asm"
 
 ;****************************************
 ; Resources
 ;****************************************
 TestSprite:
-	incbin ".\res\pickle.raw"
+	incbin ".\res\pickle1.raw"
