@@ -22,11 +22,16 @@ ld (PickleCurrentFrame),hl
 ;****************************************
 MainLoop:
 	call UpdatePlayerPosition
+	di
+	call DrawScreen
+	ei
+	;; This seems like a crazy way to signal for a frame. Hit google
 	ld d,0
 WaitFrame:
 	ld a,1
 	cp d
 	jp z,MainLoop
+	halt
 jp WaitFrame
 	
 
@@ -34,11 +39,12 @@ jp WaitFrame
 InterruptHandler:
 	;exx
 	;ex af,af'
-		ld b,&F5 	; The PPI is a device which gives us info about the screen
+		ld b,&F5 	; The PPI (Programmable Peripheral Interface) is a device which gives us info about the screen
 		in a,(c)	; read a from port (bc)
 		rra 		; right most bit indicates vsync, so push it into the carry
 		jp nc,NoVsync
-		call  DrawScreen
+		;call DrawScreen
+		call SwitchScreenBuffer
 		ld d,1
 	NoVsync:
 		; TODO limit this to once per frame
@@ -91,7 +97,6 @@ ret
 DrawScreen:
 	call DrawBackground
 	call DrawPlayer
-	call SwitchScreenBuffer
 ret
 
 DrawBackground:
@@ -111,9 +116,9 @@ ret
 DrawPlayer:
 	
 	ld a,(FrameCounter)
-	inc a
+	adc &80
 	ld (FrameCounter),a
-	jp nc,DoDrawing			;; how could I do this at a different frame rate?
+	jp nc,DoDrawing		
 
 	ld hl,PickleFrameOne
 	ld de,(PickleCurrentFrame)
@@ -171,7 +176,7 @@ GetScreenPos:
 	pop bc				; reset to BC to the original XY values
 					
 	ld a,b				; need to stash b as the next op insists on reading 16bit - we can't to ld c,(label)
-	ld bc,(BackBufferAddress)	; bc now contains loads either &4000 or &C000, depending which cycle we are in
+	ld bc,(BackBufferAddress)	; bc now contains either &4000 or &C000, depending which cycle we are in
 	ld c,a				; bc will now contain &40{x}
 	add hl,bc			; hl = hl + bc, add the x and y values together
 ret
