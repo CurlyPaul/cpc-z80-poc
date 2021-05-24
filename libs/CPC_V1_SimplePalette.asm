@@ -1,6 +1,6 @@
-;***************************************
-; Origially based an example at www.cpcwiki.eu/index.php/Programming An_example_loader
-;***************************************
+;;***************************************
+;; Origially based an example at http://www.cpcwiki.eu/index.php/Programming An_example_loader
+;;***************************************
 
 ColourPalette: ; hardware colours
 defb &54,&42,&56,&4A,&4C,&43,&43,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4B,&54
@@ -11,13 +11,13 @@ Palette_Init:
 	;; http://www.cpcwiki.eu/forum/programming/screen-scrolling-and-ink-commands/
 	;; https://www.cpcwiki.eu/forum/programming/bios-call-scr_set_ink-and-interrupts/
 	;; di for safety
-	di
+	;di
 	ld hl,ColourPalette
 	call SetupColours
 	;; but for this to work, make sure these values are left in the shadow registers
 	;; so we've only got one switch in here
-	exx
-	ei
+	;exx
+	;ei
 ret
 
 SetupColours:

@@ -12,29 +12,39 @@ call Palette_Init
 call KeyboardScanner_Init
 call InterruptHandler_Init
 
-ld hl,PickleFrameOne
+;; This is a label that points to another label, which I don't seem to be able to define
+;; so initialise it here
+ld hl,PickleFrameTwo
 ld (PickleCurrentFrame),hl
 
 ;****************************************
 ; Main Program
 ;****************************************
 MainLoop:
-	halt
-jp MainLoop
+	call UpdatePlayerPosition
+	ld d,0
+WaitFrame:
+	ld a,1
+	cp d
+	jp z,MainLoop
+jp WaitFrame
+	
+
 
 InterruptHandler:
-	exx
-	ex af,af'
+	;exx
+	;ex af,af'
 		ld b,&F5 	; The PPI is a device which gives us info about the screen
 		in a,(c)	; read a from port (bc)
 		rra 		; right most bit indicates vsync, so push it into the carry
 		jp nc,NoVsync
-		call DrawScreen
+		call  DrawScreen
+		ld d,1
 	NoVsync:
 		; TODO limit this to once per frame
-		call UpdatePlayerPosition
-	exx
-	ex af,af'
+		; call UpdatePlayerPosition
+	;exx
+	;ex af,af'
 	ei
 ret
 
@@ -68,8 +78,6 @@ ret
 
 UpdatePlayerPosition:
 ; TODO understand and remove the second controller, as I'm not using it
-; TODO Remove the di/ei calls from inside the control libraries, we are already hanging on an interupt
-; TODO I can occasionally wrap the screen via the bottom
 	call Player_ReadControlsDual		; Read state of the controllers in hl
 	ld a,h
 	and l
@@ -101,6 +109,25 @@ ClearScreen:
 ret
 
 DrawPlayer:
+	
+	ld a,(FrameCounter)
+	inc a
+	ld (FrameCounter),a
+	jp nc,DoDrawing			;; how could I do this at a different frame rate?
+
+	ld hl,PickleFrameOne
+	ld de,(PickleCurrentFrame)
+	or a				;; this is needed to clear the carry as sbc will be effected by it
+	sbc hl,de
+	jp nz,ChangeToFrameOne		;; How would I do this with 3 frames or more?
+		ld hl,PickleFrameTwo
+		ld (PickleCurrentFrame),hl
+		jp DoDrawing
+	ChangeToFrameOne:
+		ld hl,PickleFrameOne
+		ld (PickleCurrentFrame),hl
+
+	DoDrawing:
 	ld bc,(CursorCurrentPosXY)	
 	call GetScreenPos
 	ld de,(PickleCurrentFrame)
@@ -198,15 +225,16 @@ ret
 ScreenStartAddressFlag: db 48  		; 16 = &4000 48 = &C000 
 ScreenOverflowAddress: dw &7FFF
 BackBufferAddress: dw &4000 
+FrameCounter: db 0
 
-CursorCurrentPosXY:	dw &0010	; Player xy pos
+CursorCurrentPosXY:	dw &0000	; Player xy pos
 CursorMinX: 	db 1			; Player Move limits
 CursorMaxX: 	db 68 			; Screen width 80 bytes - player width (12)
 CursorMinY: 	db 1			
-CursorMaxY: 	db 152			; Screen height 200 pixels - player height (48)
-PickleCurrentFrame: db 1		; Pointer to the current frame
+CursorMaxY: 	db 140			; Screen height 200 pixels - player height (56)
+PickleCurrentFrame: dw 1		; Pointer to the current frame
 
-CursorMoveSpeedXY: dw &0103		; Player Move speed
+CursorMoveSpeedXY: dw &040A		; Player Move speed
 
 align32	
 KeyMap equ KeyMap2+16			; wsad bnm p
