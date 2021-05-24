@@ -3,10 +3,10 @@
 ;***************************************
 
 ColourPalette: ; hardware colours
-defb &54,&42,&56,&4A,&4C,&43,&43,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&54
+defb &54,&42,&56,&4A,&4C,&43,&43,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4B,&54
 
 Palette_Init:
-	;; CPC has some quriks here as well, seems to be around the ability to flash each colour
+	;; CPC has some quirks here as well, seems to be caused by the ability to flash each colour
 	;;
 	;; http://www.cpcwiki.eu/forum/programming/screen-scrolling-and-ink-commands/
 	;; https://www.cpcwiki.eu/forum/programming/bios-call-scr_set_ink-and-interrupts/

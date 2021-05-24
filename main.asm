@@ -12,6 +12,9 @@ call Palette_Init
 call KeyboardScanner_Init
 call InterruptHandler_Init
 
+ld hl,PickleFrameOne
+ld (PickleCurrentFrame),hl
+
 ;****************************************
 ; Main Program
 ;****************************************
@@ -100,7 +103,7 @@ ret
 DrawPlayer:
 	ld bc,(CursorCurrentPosXY)	
 	call GetScreenPos
-	ld de,TestSprite
+	ld de,(PickleCurrentFrame)
 	ld b,56		 ; * lines
 
 	SpriteNextLine:
@@ -201,6 +204,7 @@ CursorMinX: 	db 1			; Player Move limits
 CursorMaxX: 	db 68 			; Screen width 80 bytes - player width (12)
 CursorMinY: 	db 1			
 CursorMaxY: 	db 152			; Screen height 200 pixels - player height (48)
+PickleCurrentFrame: db 1		; Pointer to the current frame
 
 CursorMoveSpeedXY: dw &0103		; Player Move speed
 
@@ -222,5 +226,7 @@ read ".\libs\CPC_V1_SimplePalette.asm"
 ;****************************************
 ; Resources
 ;****************************************
-TestSprite:
+PickleFrameOne:
 	incbin ".\res\pickle1.raw"
+PickleFrameTwo:
+	incbin ".\res\pickle2.raw"
