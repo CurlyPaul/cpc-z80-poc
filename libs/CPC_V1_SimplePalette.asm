@@ -3,7 +3,7 @@
 ;;***************************************
 
 ColourPalette: ; hardware colours
-defb &54,&42,&56,&4A,&4C,&43,&43,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4C,&4B,&54
+defb &54,&42,&56,&4A,&4C,&5E,&4E,&5E,&5E,&4C,&4C,&4C,&4C,&4C,&4C,&4B,&54
 
 Palette_Init:
 	;; CPC has some quirks here as well, seems to be caused by the ability to flash each colour
