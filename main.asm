@@ -7,6 +7,12 @@ read ".\libs\Multiplatform_ReadJoystick_Header.asm"
 
 org &8000
 
+;;
+;; Frame counters can be simpler by checking one bit
+;; Remove the exx from keyboard checker as it's dangerous
+;;
+;;
+
 call Screen_Init
 call Palette_Init
 call KeyboardScanner_Init
@@ -51,9 +57,7 @@ InterruptHandler:
 		jp nc,NoVsync
 		call SwitchScreenBuffer
 		ld d,1
-	NoVsync:
-		; TODO limit this to once per frame
-		; call UpdatePlayerPosition
+	NoVsync: 		;; This could just return if we aren't in vsync, but I'll leave this here for expansion later
 	;exx
 	;ex af,af'
 	ei
@@ -95,26 +99,26 @@ UpdatePlayerPosition:
 ret
 
 ProcessFireButton:
+	;; Inputs:	HL byte from the keyboard scanner
 	bit Keymap_F1,h				;Test the fire button bit in H
-	jp nz,FireButtonNotDown
-		call SpawnBullet
-	FireButtonNotDown:
+	ret nz
+	call SpawnBullet
 ret
 
 UpdateBulletPosition:
 	
-	ld hl,(BulletCurrentPosXY)
+	ld hl,(BulletCurrentPosXY)		;; This notation loads both values
 	ld bc,(BulletMoveSpeedXY)
 	add hl,bc
 	ld (BulletCurrentPosXY),hl
 
 	;; Check if we are out of bounds
-	ld a,h		;; Current X pos
+	ld a,h					;; Current X pos
 	ld hl,CursorMaxX
-	cp (hl) 					; Compare to limit
-	ret c						; Return if not over limit
+	cp (hl) 				;; Compare to limit
+	ret c					;; Return if not over limit
 
-	;; If we are, mark the bullet as dead
+	;; If we are here we are out of bounds, mark the bullet as dead
 	ld hl,(BulletIsAlive)
 	ld hl,0
 	ld (BulletIsAlive),hl
@@ -122,12 +126,10 @@ ret
 
 SpawnBullet:
 	ld hl,(CursorCurrentPosXY)
-	ld a,h
-	add 3	;; Width of the player
-	ld h,a
-	ld a,l
-	add 28  
-	ld l,a
+	ld b,&06	;; This is just a majic number to offset it 
+	ld c,&1C	;; to the correct spot relative to the player
+	add hl,bc	
+
 	ld (BulletCurrentPosXY),hl
 	ld hl,BulletIsAlive
 	ld (hl),1
@@ -320,7 +322,7 @@ CursorMoveSpeedXY: 	dw &040A		; Player Move speed
 
 BulletCurrentPosXY:	dw &1030
 BulletCurrentFrame: 	dw BulletFrameOne		
-BulletMoveSpeedXY: 	dw &0900
+BulletMoveSpeedXY: 	dw &0202
 BulletFrameCounter: 	db 0
 BulletIsAlive:		db 1
 
