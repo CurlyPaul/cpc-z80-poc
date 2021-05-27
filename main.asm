@@ -7,12 +7,6 @@ read ".\libs\Multiplatform_ReadJoystick_Header.asm"
 
 org &8000
 
-;;
-;; Frame counters can be simpler by checking one bit
-;; Remove the exx from keyboard checker as it's dangerous
-;;
-;;
-
 call Screen_Init
 call Palette_Init
 call KeyboardScanner_Init
@@ -29,10 +23,10 @@ MainLoop:
 	ld h,a					; Read both controllers, and merge them together into H	
 
 	push hl
-		call ProcessFireButton
+		call ProcessFireButton	
 	pop hl
 
-	call UpdatePlayerPosition
+	call UpdatePlayerPosition		
 	call UpdateBulletPosition
 	di
 	call DrawScreen
@@ -187,10 +181,11 @@ ret
 
 DrawPlayer:	
 	ld a,(FrameCounter)
-	adc &80
+	inc a
 	ld (FrameCounter),a
-	jp nc,DoPlayerDrawing		
-
+	bit 1,a
+	jp z,DoPlayerDrawing
+	
 	ld hl,PickleFrameOne
 	ld de,(PickleCurrentFrame)
 	or a				;; this is needed to clear the carry as sbc will be effected by it
@@ -322,7 +317,7 @@ CursorMoveSpeedXY: 	dw &040A		; Player Move speed
 
 BulletCurrentPosXY:	dw &1030
 BulletCurrentFrame: 	dw BulletFrameOne		
-BulletMoveSpeedXY: 	dw &0202
+BulletMoveSpeedXY: 	dw &0800
 BulletFrameCounter: 	db 0
 BulletIsAlive:		db 1
 

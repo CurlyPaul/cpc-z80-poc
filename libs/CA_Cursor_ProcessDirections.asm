@@ -57,15 +57,16 @@ CursorDoMaxCheck:
 		exx						; hl now contains the keypress bits again
 		ret c						; Return if not over limit
 		
-		pop af						; Remove the return
-		ret	;Failed limit check - so give up
+		pop af						;; Remove the return address from the stack, so now we'll return levels up at the
+								;; at the call site
+		ret						;; Failed limit check - so give up
 
 CursorDoMinCheck:
-		cp (hl) 					; Compare to limit
+		cp (hl) 					;; Compare to limit
 		exx
-		ret nc						; Return if not under limit
+		ret nc						;; Return if not under limit
 		
-		pop af						; Remove the return ??? TODO understand why this exactly
-		ret	;Failed limit check - so give up
+		pop af						
+		ret						;; Failed limit check - so give up
 
 		
